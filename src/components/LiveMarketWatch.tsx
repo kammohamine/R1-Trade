@@ -24,62 +24,48 @@ export default function LiveMarketWatch() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchLiveData = async () => {
-        try {
-            console.log('Starting data fetch...');
-            const promises = FOREX_PAIRS.map(async ({ from, to, symbol }) => {
-                try {
-                    console.log(`Fetching data for ${symbol}...`);
-                    const currentRate = await marketDataService.getCurrentRate(from, to);
-                    console.log(`Received rate for ${symbol}:`, currentRate);
+    useEffect(() => {
+        console.log('🔄 Initializing market watch');
+        
+        // État initial
+        setMarketData([
+            { symbol: 'EUR/USD', price: 0, change: 0, changePercent: 0, volume: 0, lastUpdate: 'Connecting...' },
+            { symbol: 'GBP/USD', price: 0, change: 0, changePercent: 0, volume: 0, lastUpdate: 'Connecting...' },
+            { symbol: 'USD/JPY', price: 0, change: 0, changePercent: 0, volume: 0, lastUpdate: 'Connecting...' }
+        ]);
 
-                    return {
-                        symbol,
-                        price: currentRate,
-                        change: 0,
-                        changePercent: 0,
-                        volume: 0,
-                        lastUpdate: new Date().toLocaleTimeString()
-                    };
-                } catch (err) {
-                    console.error(`Detailed error for ${symbol}:`, err);
-                    return {
-                        symbol,
-                        price: 0,
-                        change: 0,
-                        changePercent: 0,
-                        volume: 0,
-                        lastUpdate: 'Error loading',
-                        error: true
+        const unsubscribe = marketDataService.subscribeToMarketData((data) => {
+            console.log('📈 Processing market data:', data);
+            setMarketData(prevData => {
+                const updatedData = [...prevData];
+                const index = updatedData.findIndex(item => item.symbol === data.symbol);
+                
+                if (index !== -1) {
+                    const oldPrice = updatedData[index].price;
+                    const newPrice = data.price;
+                    const change = newPrice - oldPrice;
+                    const changePercent = oldPrice !== 0 ? (change / oldPrice) * 100 : 0;
+                    
+                    updatedData[index] = {
+                        ...updatedData[index],
+                        price: newPrice,
+                        change: change,
+                        changePercent: changePercent,
+                        volume: data.volume,
+                        lastUpdate: new Date(data.timestamp).toLocaleTimeString()
                     };
                 }
+                
+                return updatedData;
             });
-
-            const results = await Promise.all(promises);
-            console.log('All results:', results);
-
-            const validResults = results.filter(result => !('error' in result));
-            console.log('Valid results:', validResults);
-
-            if (validResults.length === 0) {
-                throw new Error('No valid data received from any pair');
-            }
-
-            setMarketData(validResults);
-            setError(null);
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to fetch market data';
-            console.error('Final error:', errorMessage);
-            setError(errorMessage);
-        } finally {
             setLoading(false);
-        }
-    };
+        });
 
-    useEffect(() => {
-        fetchLiveData();
-        const interval = setInterval(fetchLiveData, REFRESH_INTERVAL);
-        return () => clearInterval(interval);
+        return () => {
+            console.log('🔌 Cleaning up subscription');
+            unsubscribe();
+            marketDataService.disconnect();
+        };
     }, []);
 
     if (loading) {
