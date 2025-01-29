@@ -26,11 +26,15 @@ class MarketDataService {
 
     private async initValidSymbols() {
         try {
+            console.log('🔄 Initializing Forex symbols...');
             const response = await this.finnhubClient.get('/forex/symbol');
             this.validSymbols = response.data.map((item: any) => item.symbol);
-            console.log('Valid Forex symbols:', this.validSymbols);
+            console.log('✅ Available Forex symbols:', this.validSymbols);
         } catch (error) {
-            console.error('Error fetching valid symbols:', error);
+            console.error('❌ Error fetching symbols:', {
+                error,
+                status: axios.isAxiosError(error) ? error.response?.status : 'unknown'
+            });
         }
     }
 
@@ -105,30 +109,33 @@ class MarketDataService {
 
     async getCurrentRate(fromSymbol: string, toSymbol: string): Promise<number> {
         try {
-            // Attendre que les symboles valides soient chargés
+            console.log(`🔄 Getting rate for ${fromSymbol}/${toSymbol}`);
+            
             if (this.validSymbols.length === 0) {
+                console.log('⚠️ No symbols loaded, initializing...');
                 await this.initValidSymbols();
             }
 
-            // Construire les différents formats possibles du symbole
             const possibleSymbols = [
                 `${fromSymbol}${toSymbol}:FXCM`,
-                `${fromSymbol}${toSymbol}:OANDA`,
-                `${fromSymbol}/${toSymbol}:FXCM`,
-                `${fromSymbol}/${toSymbol}:OANDA`
+                `${fromSymbol}${toSymbol}:OANDA`
             ];
+            
+            console.log('🔍 Checking possible symbols:', possibleSymbols);
+            console.log('📋 Against valid symbols:', this.validSymbols);
 
-            // Trouver le premier symbole valide
             const validSymbol = possibleSymbols.find(s => this.validSymbols.includes(s));
-
+            
             if (!validSymbol) {
-                throw new Error(`No valid symbol found for ${fromSymbol}/${toSymbol}`);
+                throw new Error(`❌ No valid symbol found for ${fromSymbol}/${toSymbol}`);
             }
 
-            console.log('Using valid symbol:', validSymbol);
+            console.log(`✅ Using symbol: ${validSymbol}`);
 
             const now = Math.floor(Date.now() / 1000);
             const fiveMinutesAgo = now - 5 * 60;
+
+            console.log(`📊 Fetching data from ${new Date(fiveMinutesAgo * 1000)} to ${new Date(now * 1000)}`);
 
             const response = await this.finnhubClient.get('/forex/candle', {
                 params: {
@@ -139,13 +146,23 @@ class MarketDataService {
                 }
             });
 
-            if (!response.data || !response.data.c || response.data.c.length === 0) {
-                throw new Error(`No data received for ${validSymbol}`);
+            console.log('📡 API Response:', response.data);
+
+            if (!response.data || response.data.s === 'no_data') {
+                throw new Error(`❌ No data available for ${validSymbol}`);
             }
 
-            return response.data.c[response.data.c.length - 1];
+            const rate = response.data.c[response.data.c.length - 1];
+            console.log(`💱 Latest rate for ${validSymbol}: ${rate}`);
+            
+            return rate;
         } catch (error) {
-            console.error('Finnhub API Error:', error);
+            console.error('❌ Error details:', {
+                error,
+                message: error instanceof Error ? error.message : 'Unknown error',
+                validSymbols: this.validSymbols,
+                status: axios.isAxiosError(error) ? error.response?.status : 'unknown'
+            });
             throw error;
         }
     }

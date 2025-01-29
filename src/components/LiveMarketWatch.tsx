@@ -13,9 +13,9 @@ interface MarketPrice {
 }
 
 const FOREX_PAIRS = [
-    { from: 'EUR', to: 'USD', symbol: 'EURUSD:FXCM' },
-    { from: 'GBP', to: 'USD', symbol: 'GBPUSD:FXCM' },
-    { from: 'USD', to: 'JPY', symbol: 'USDJPY:FXCM' }
+    { from: 'EUR', to: 'USD', symbol: 'EUR/USD' },
+    { from: 'GBP', to: 'USD', symbol: 'GBP/USD' },
+    { from: 'USD', to: 'JPY', symbol: 'USD/JPY' }
 ];
 const REFRESH_INTERVAL = 10000; // 10 secondes
 
@@ -29,24 +29,20 @@ export default function LiveMarketWatch() {
             console.log('Starting data fetch...');
             const promises = FOREX_PAIRS.map(async ({ from, to, symbol }) => {
                 try {
-                    // Obtenir uniquement le taux actuel
+                    console.log(`Fetching data for ${symbol}...`);
                     const currentRate = await marketDataService.getCurrentRate(from, to);
-                    
-                    // Pour le moment, on utilise un changement fictif
-                    const change = 0;
-                    const changePercent = 0;
+                    console.log(`Received rate for ${symbol}:`, currentRate);
 
                     return {
                         symbol,
                         price: currentRate,
-                        change,
-                        changePercent,
+                        change: 0,
+                        changePercent: 0,
                         volume: 0,
                         lastUpdate: new Date().toLocaleTimeString()
                     };
                 } catch (err) {
-                    console.error(`Error fetching data for ${symbol}:`, err);
-                    // Au lieu de throw, on retourne une structure d'erreur
+                    console.error(`Detailed error for ${symbol}:`, err);
                     return {
                         symbol,
                         price: 0,
@@ -60,9 +56,11 @@ export default function LiveMarketWatch() {
             });
 
             const results = await Promise.all(promises);
-            // Filtrer les résultats en erreur si nécessaire
+            console.log('All results:', results);
+
             const validResults = results.filter(result => !('error' in result));
-            
+            console.log('Valid results:', validResults);
+
             if (validResults.length === 0) {
                 throw new Error('No valid data received from any pair');
             }
@@ -71,7 +69,7 @@ export default function LiveMarketWatch() {
             setError(null);
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to fetch market data';
-            console.error('Error in fetchLiveData:', err);
+            console.error('Final error:', errorMessage);
             setError(errorMessage);
         } finally {
             setLoading(false);
