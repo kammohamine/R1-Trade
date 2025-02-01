@@ -1,52 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import marketPredictor from '../services/marketPredictor';
-import { ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import {
-    getTrendColor,
     getRiskColor,
-    formatPrice,
-    formatPercentage,
-    getIndicatorColor,
-    cardClasses
 } from '../utils/marketUtils';
-import {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer
-} from 'recharts';
 import { marketDataService } from '../services/marketDataService';
+import { generateTradingAdvice } from '../services/groqService';
+import { TradingAdvice } from '../types';
 
 interface DashboardProps {
     symbol: string;
-    refreshInterval?: number; // in milliseconds
+    refreshInterval?: number;
 }
 
 const MarketPredictionDashboard: React.FC<DashboardProps> = ({ 
     symbol, 
-    refreshInterval = 60000 // default 1 minute
+    refreshInterval = 60000
 }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [predictionData, setPredictionData] = useState<any>(null);
     const [historicalData, setHistoricalData] = useState<any[]>([]);
+    const [predictions, setPredictions] = useState<TradingAdvice[]>([]);
+    const [selectedPair, setSelectedPair] = useState('EURUSD');
 
     const fetchData = async () => {
         try {
             setLoading(true);
-            const dailyData = await marketDataService.getDailyData(symbol);
+            const dailyData = await marketDataService.getForexCandles(symbol, '1D');
             setHistoricalData(dailyData);
-            const prediction = await marketPredictor.predictMarket(dailyData);
+            const prediction = await marketPredictor.predictMarket(symbol);
             setPredictionData(prediction);
             setError(null);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const analyzeMarket = async () => {
+        try {
+            const candles = await marketDataService.getForexCandles(selectedPair, '1D');
+            const prediction = await generateTradingAdvice(selectedPair, candles);
+            setPredictions(prev => [prediction, ...prev.slice(0, 3)]);
+        } catch (error) {
+            console.error('Prediction error:', error);
         }
     };
 
@@ -65,109 +64,43 @@ const MarketPredictionDashboard: React.FC<DashboardProps> = ({
     };
 
     return (
-        <div className={cardClasses.container}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Prediction Summary */}
-                <div className="bg-gray-700 p-4 rounded-lg">
-                    <h3 className={cardClasses.header}>Prediction Summary</h3>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className={cardClasses.value}>
-                                {formatPrice(predictionData.prediction)}
-                            </p>
-                            <p className={`flex items-center ${getTrendColor(predictionData.trend)}`}>
-                                {predictionData.trend === 'bullish' ? <ArrowUp /> : <ArrowDown />}
-                                {predictionData.trend}
-                            </p>
-                        </div>
-                        <div className="text-right">
-                            <p className={cardClasses.subheader}>Confidence</p>
-                            <p className={cardClasses.value}>
-                                {formatPercentage(predictionData.confidence)}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Technical Indicators */}
-                <div className="bg-gray-700 p-4 rounded-lg">
-                    <h3 className={cardClasses.header}>Technical Indicators</h3>
-                    <div className="space-y-2">
-                        <div className={cardClasses.indicator.container}>
-                            <span className={cardClasses.indicator.label}>RSI</span>
-                            <span className={getIndicatorColor(predictionData.indicators.rsi, 'rsi')}>
-                                {predictionData.indicators.rsi.toFixed(2)}
-                            </span>
-                        </div>
-                        <div className={cardClasses.indicator.container}>
-                            <span className={cardClasses.indicator.label}>MACD</span>
-                            <span className={getIndicatorColor(predictionData.indicators.macd.histogram, 'macd')}>
-                                {predictionData.indicators.macd.macdLine.toFixed(2)}
-                            </span>
-                        </div>
-                        <div className={cardClasses.indicator.container}>
-                            <span className={cardClasses.indicator.label}>EMA</span>
-                            <span>{predictionData.indicators.ema.toFixed(2)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Support & Resistance */}
-                <div className="bg-gray-700 p-4 rounded-lg">
-                    <h3 className={cardClasses.header}>Support & Resistance</h3>
-                    <div className="space-y-2">
-                        <div>
-                            <p className={cardClasses.subheader}>Resistance Levels</p>
-                            <div className="flex gap-2">
-                                {predictionData.resistanceLevels.map((level: number, index: number) => (
-                                    <span key={index} className="text-red-500">${level.toFixed(2)}</span>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <p className={cardClasses.subheader}>Support Levels</p>
-                            <div className="flex gap-2">
-                                {predictionData.supportLevels.map((level: number, index: number) => (
-                                    <span key={index} className="text-green-500">${level.toFixed(2)}</span>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
+        <div className="p-6 bg-gray-800 rounded-lg">
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold">Prédictions de marché</h2>
+                <div className="flex gap-4">
+                    <select 
+                        value={selectedPair}
+                        onChange={(e) => setSelectedPair(e.target.value)}
+                        className="bg-gray-700 px-4 py-2 rounded"
+                    >
+                        <option value="EURUSD">EUR/USD</option>
+                        <option value="GBPJPY">GBP/JPY</option>
+                        <option value="USDJPY">USD/JPY</option>
+                    </select>
+                    <button 
+                        onClick={analyzeMarket}
+                        className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700"
+                    >
+                        Générer
+                    </button>
                 </div>
             </div>
-
-            {/* Price Chart */}
-            <div className="mt-6 h-96">
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={historicalData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                            dataKey="timestamp" 
-                            tickFormatter={(value) => new Date(value).toLocaleDateString()}
-                        />
-                        <YAxis domain={['auto', 'auto']} />
-                        <Tooltip 
-                            labelFormatter={(value) => new Date(value).toLocaleDateString()}
-                            formatter={(value: number) => ['$' + value.toFixed(2)]}
-                        />
-                        <Legend />
-                        <Line 
-                            type="monotone" 
-                            dataKey="close" 
-                            stroke="#2563eb" 
-                            name="Price"
-                        />
-                    </LineChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* Risk Level */}
-            <div className="mt-6 flex items-center gap-2">
-                <span className="text-gray-600">Risk Level:</span>
-                <div className="flex items-center gap-1">
-                    {getRiskIcon(predictionData.riskLevel)}
-                    <span className="capitalize">{predictionData.riskLevel}</span>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {predictions.map((prediction, index) => (
+                    <div key={index} className="bg-gray-700 p-4 rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold">{prediction.pair}</h3>
+                            <span className={`px-2 py-1 rounded ${prediction.direction === 'LONG' ? 'bg-green-900' : 'bg-red-900'}`}>
+                                {prediction.direction}
+                            </span>
+                        </div>
+                        <p className="text-gray-300">{prediction.reasoning}</p>
+                        <div className="mt-4 flex justify-between items-center">
+                            <span className="text-sm text-gray-400">Confiance</span>
+                            <span className="text-blue-400">{prediction.confidence}%</span>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );

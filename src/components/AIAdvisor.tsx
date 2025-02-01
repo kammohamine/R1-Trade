@@ -1,41 +1,56 @@
 import { useState } from 'react';
 import { Brain, TrendingUp, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { TradingAdvice } from '../types';
-
-const mockAdvice: TradingAdvice[] = [
-  {
-    pair: 'EUR/USD',
-    direction: 'BUY',
-    entryPrice: 1.0850,
-    stopLoss: 1.0820,
-    takeProfit: 1.0920,
-    reasoning: 'Strong bullish momentum with support at 1.0820. RSI indicates oversold conditions and MACD shows potential reversal.',
-    confidence: 85,
-    timeframe: '4H',
-    riskReward: 2.33
-  },
-  {
-    pair: 'GBP/JPY',
-    direction: 'SELL',
-    entryPrice: 185.500,
-    stopLoss: 185.800,
-    takeProfit: 184.600,
-    reasoning: 'Price reached major resistance zone with bearish divergence on RSI. Previous support turned resistance.',
-    confidence: 78,
-    timeframe: '1D',
-    riskReward: 3.0
-  }
-];
+import { generateTradingAdvice } from '../services/groqService';
+import { marketDataService } from '../services/marketDataService';
 
 export default function AIAdvisor() {
   const [loading, setLoading] = useState(false);
   const [selectedPair, setSelectedPair] = useState('EUR/USD');
   const [timeframe, setTimeframe] = useState('4H');
+  const [advices, setAdvices] = useState<TradingAdvice[]>([]);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => setLoading(false), 1500);
+    try {
+      await marketDataService.connect(import.meta.env.VITE_META_API_ACCOUNT_ID);
+      const marketData = await marketDataService.getForexCandles(selectedPair, '1h');
+
+      const analysis = await generateTradingAdvice(selectedPair, marketData);
+      
+      // Transformer l'analyse en format TradingAdvice
+      const newAdvice: TradingAdvice = {
+        pair: selectedPair,
+        direction: analysis.direction,
+        entryPrice: analysis.key_levels.support[0] || 0,
+        stopLoss: analysis.key_levels.support[1] || 0,
+        takeProfit: analysis.key_levels.resistance[0] || 0,
+        reasoning: analysis.reasoning,
+        confidence: analysis.confidence,
+        timeframe: timeframe,
+        riskReward: calculateRiskRewardRatio(
+          analysis.key_levels.support,
+          analysis.key_levels.resistance
+        ),
+        key_levels: {
+          support: analysis.key_levels.support,
+          resistance: analysis.key_levels.resistance
+        }
+      };
+
+      setAdvices(prev => [newAdvice, ...prev.slice(0, 2)]);
+    } catch (error) {
+      console.error('Erreur MetaApi:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateRiskRewardRatio = (support: number[], resistance: number[]): number => {
+    if (support.length < 2 || resistance.length < 1) return 0;
+    const risk = support[0] - support[1];
+    const reward = resistance[0] - support[0];
+    return reward / Math.abs(risk);
   };
 
   return (
@@ -82,12 +97,12 @@ export default function AIAdvisor() {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {mockAdvice.map((advice, index) => (
+        {advices.map((advice, index) => (
           <div key={index} className="bg-gray-800 rounded-xl p-6 shadow-md border border-gray-700">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-4">
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  advice.direction === 'BUY' 
+                  advice.direction === 'LONG' 
                     ? 'bg-green-900 text-green-300' 
                     : 'bg-red-900 text-red-300'
                 }`}>
@@ -134,6 +149,33 @@ export default function AIAdvisor() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 bg-gray-800 p-4 rounded-lg">
+        <h3 className="text-xl font-semibold mb-4">Analyse IA Groq</h3>
+        {advices.length > 0 && (
+          <div className="space-y-4">
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <p className="text-gray-300">{advices[0].reasoning}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-green-900/20 p-4 rounded-lg">
+                <p className="text-sm text-gray-400">Confiance</p>
+                <p className="text-2xl text-green-400">{advices[0].confidence}%</p>
+              </div>
+              <div className="bg-blue-900/20 p-4 rounded-lg">
+                <p className="text-sm text-gray-400">Direction</p>
+                <p className={`text-2xl ${
+                  advices[0].direction === 'LONG' ? 'text-green-400' :
+                  advices[0].direction === 'SHORT' ? 'text-red-400' : 
+                  'text-gray-400'
+                }`}>
+                  {advices[0].direction}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

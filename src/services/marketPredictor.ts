@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { marketDataService } from './marketDataService';
+import { generateTradingAdvice } from './groqService';
 
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -126,9 +128,9 @@ export class MarketPredictor {
         }
     }
 
-    async predictMarket(marketData: MarketData[]): Promise<PredictionResult> {
+    async predictMarket(symbol: string): Promise<PredictionResult> {
         try {
-            const prices = marketData.map(d => d.close);
+            const prices = await this.getMarketData(symbol).then(data => data.map(d => d.close));
             
             // Calculate technical indicators
             const rsi = this.calculateRSI(prices);
@@ -137,10 +139,10 @@ export class MarketPredictor {
             const ema = this.calculateEMA(prices, 20);
             
             // Calculate support and resistance levels
-            const { support, resistance } = this.calculateSupportResistance(marketData);
+            const { support, resistance } = this.calculateSupportResistance(await this.getMarketData(symbol));
             
             // Prepare data for DeepSeek R1 model
-            const formattedData = marketData.map((data, index) => ({
+            const formattedData = (await this.getMarketData(symbol)).map((data, index) => ({
                 close_price: data.close,
                 volume: data.volume,
                 rsi: index > 14 ? this.calculateRSI(prices.slice(index - 14, index + 1)) : null,
@@ -204,3 +206,10 @@ export class MarketPredictor {
 }
 
 export default MarketPredictor.getInstance();
+
+const DEFAULT_TIMEFRAME = '1D';
+
+export const predictMarket = async (symbol: string): Promise<TradingAdvice> => {
+    const candles = await marketDataService.getForexCandles(symbol, DEFAULT_TIMEFRAME);
+    return generateTradingAdvice(symbol, candles);
+};

@@ -30,9 +30,38 @@ export interface DashboardStats {
   averageLoss: number;
 }
 
+export interface MarketPrediction {
+  prediction: 'bullish' | 'bearish' | 'neutral';
+  confidence: number;
+  indicators: {
+    rsi: number;
+    macd: {
+      macdLine: number;
+      signalLine: number;
+      histogram: number;
+    };
+    sma: number;
+    ema: number;
+  };
+  supportLevels: number[];
+  resistanceLevels: number[];
+  trend: string;
+  riskLevel: 'high' | 'medium' | 'low';
+}
+
+export interface MarketData {
+  timeframe?: string;
+  close: number;
+  volume: number;
+  timestamp?: string;
+  open?: number;
+  high?: number;
+  low?: number;
+}
+
 export interface TradingAdvice {
   pair: string;
-  direction: 'BUY' | 'SELL';
+  direction: 'LONG' | 'SHORT' | 'NEUTRAL';
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
@@ -40,4 +69,23 @@ export interface TradingAdvice {
   confidence: number;
   timeframe: string;
   riskReward: number;
+  key_levels: {
+    support: number[];
+    resistance: number[];
+  };
+  metaapiInfo?: {
+    spread: number;
+    executionSpeed: number;
+  };
+}
+
+export interface GroqAnalysis {
+  summary: string;
+  confidence: number;
+  recommendation: 'BUY' | 'SELL' | 'HOLD';
+  reasoning: string;
+  key_levels: {
+    support: number[];
+    resistance: number[];
+  };
 }
